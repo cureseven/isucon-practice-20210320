@@ -62,8 +62,8 @@ type Train struct {
 	StartStation string    `json:"start_station" db:"start_station"`
 	LastStation  string    `json:"last_station" db:"last_station"`
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
-	departure    string    `json:"departure" db:"departure"`
-	arrival      string    `json:"arrival" db:"arrival"`
+	departure    *string    `json:"departure" db:"departure"`
+	arrival      *string    `json:"arrival" db:"arrival"`
 }
 
 type Seat struct {
@@ -463,7 +463,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	adult, _ := strconv.Atoi(r.URL.Query().Get("adult"))
 	child, _ := strconv.Atoi(r.URL.Query().Get("child"))
 
-    // TODO: nameにindex貼れそう
 	var fromStation, toStation Station
 	query := "SELECT * FROM station_master WHERE name=?"
 
@@ -521,7 +520,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trainList := []Train{}
-
 	err = dbx.Select(&trainList, inQuery, inArgs...)
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
