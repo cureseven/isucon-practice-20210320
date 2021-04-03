@@ -2115,53 +2115,55 @@ func main() {
 	mux.HandleFunc(pat.Post("/api/user/reservations/:item_id/cancel"), userReservationCancelHandler)
 
 	go func() {
+		ticker := time.NewTicker(time.Second)
 		for {
-			time.Sleep(time.Second)
+			select {
+			case <-ticker.C:
+				if len(PaymentCancelQueuedPaymentIds) == 0 {
+					continue
+				}
 
-			if len(PaymentCancelQueuedPaymentIds) == 0 {
-				continue
+				log.Println("bulk cancelでめっちゃ消すで")
+
+				PaymentCancelQueueLock.Lock()
+				paymentIds := PaymentCancelQueuedPaymentIds
+				PaymentCancelQueueLock.Unlock()
+
+				paymentApi := os.Getenv("PAYMENT_API")
+				if paymentApi == "" {
+					paymentApi = "http://payment:5000"
+				}
+
+				j, err := json.Marshal(struct {
+					PaymentId []string `json:"payment_id"`
+				}{
+					PaymentId: paymentIds,
+				})
+				if err != nil {
+					panic(err)
+				}
+
+				client := &http.Client{Timeout: time.Duration(5) * time.Second}
+				req, err := http.NewRequest("POST", paymentApi+"/payment/_bulk", bytes.NewBuffer(j))
+				if err != nil {
+					log.Println(err.Error())
+					continue
+				}
+				resp, err := client.Do(req)
+				if err != nil {
+					log.Println(err.Error())
+					continue
+				}
+				_ = resp.Body.Close()
+
+				if resp.StatusCode != 200 {
+					log.Println("bulk cancelがダメだったっぽいわ")
+				}
+
+				PaymentCancelQueueLock.Lock()
+				PaymentCancelQueuedPaymentIds = PaymentCancelQueuedPaymentIds[len(paymentIds):]
+				PaymentCancelQueueLock.Unlock()
 			}
-
-			PaymentCancelQueueLock.Lock()
-			paymentIds := PaymentCancelQueuedPaymentIds
-			PaymentCancelQueueLock.Unlock()
-
-			paymentApi := os.Getenv("PAYMENT_API")
-			if paymentApi == "" {
-				paymentApi = "http://payment:5000"
-			}
-
-			j, err := json.Marshal(struct {
-				PaymentId []string `json:"payment_id"`
-			}{
-				PaymentId: paymentIds,
-			})
-			if err != nil {
-				panic(err)
-			}
-
-			log.Println("bulk cancelでめっちゃ消すで")
-
-			client := &http.Client{Timeout: time.Duration(10) * time.Second}
-			req, err := http.NewRequest("POST", paymentApi+"/payment/_bulk", bytes.NewBuffer(j))
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			_ = resp.Body.Close()
-
-			if resp.StatusCode != 200 {
-				log.Println("bulk cancelがダメだったっぽいわ")
-			}
-
-			PaymentCancelQueueLock.Lock()
-			PaymentCancelQueuedPaymentIds = PaymentCancelQueuedPaymentIds[0:len(paymentIds)]
-			PaymentCancelQueueLock.Unlock()
 		}
 	}()
 
