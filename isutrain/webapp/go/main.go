@@ -2147,7 +2147,7 @@ func main() {
 	defer dbx.Close()
 
 	dbx.SetMaxOpenConns(100)
-    dbx.SetMaxIdleConns(100)
+	dbx.SetMaxIdleConns(100)
 
 	// HTTP
 
