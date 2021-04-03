@@ -5,6 +5,7 @@ gogo:
 	sudo truncate --size 0 /var/log/nginx/error.log
 	sudo systemctl start isutrain-go.service
 	sudo systemctl start nginx
+	sleep 6
 	$(MAKE) bench
 
 bench:
