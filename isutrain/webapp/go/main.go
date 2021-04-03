@@ -2064,11 +2064,13 @@ func cancelPaymentService() {
 	for {
 		sem <- true
 		wg.Add(1)
+		time.Sleep(25 * time.Microsecond)
 		go func() {
+			fmt.Println("バッチ処理始めます！")
 			defer wg.Done()
 			defer func() { <-sem }()
 			requestBulkPaymentCancel()
-			time.Sleep(1 * time.Second)
+			fmt.Println("バッチ処理やめます！")
 		}()
 	}
 }
