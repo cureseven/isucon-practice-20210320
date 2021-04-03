@@ -74,19 +74,21 @@ type Seat struct {
 }
 
 type Reservation struct {
-	ReservationId int        `json:"reservation_id" db:"reservation_id"`
-	UserId        *int       `json:"user_id" db:"user_id"`
-	Date          *time.Time `json:"date" db:"date"`
-	TrainClass    string     `json:"train_class" db:"train_class"`
-	TrainName     string     `json:"train_name" db:"train_name"`
-	Departure     string     `json:"departure" db:"departure"`
-	Arrival       string     `json:"arrival" db:"arrival"`
-	PaymentStatus string     `json:"payment_status" db:"payment_status"`
-	Status        string     `json:"status" db:"status"`
-	PaymentId     string     `json:"payment_id,omitempty" db:"payment_id"`
-	Adult         int        `json:"adult" db:"adult"`
-	Child         int        `json:"child" db:"child"`
-	Amount        int        `json:"amount" db:"amount"`
+	ReservationId      int        `json:"reservation_id" db:"reservation_id"`
+	UserId             *int       `json:"user_id" db:"user_id"`
+	Date               *time.Time `json:"date" db:"date"`
+	TrainClass         string     `json:"train_class" db:"train_class"`
+	TrainName          string     `json:"train_name" db:"train_name"`
+	Departure          string     `json:"departure" db:"departure"`
+	DepartureStationId *int       `json:",omitempty" db:"departure_station_id"`
+	Arrival            string     `json:"arrival" db:"arrival"`
+	ArrivalStationId   *int       `json:",omitempty" db:"arrival_station_id"`
+	PaymentStatus      string     `json:"payment_status" db:"payment_status"`
+	Status             string     `json:"status" db:"status"`
+	PaymentId          string     `json:"payment_id,omitempty" db:"payment_id"`
+	Adult              int        `json:"adult" db:"adult"`
+	Child              int        `json:"child" db:"child"`
+	Amount             int        `json:"amount" db:"amount"`
 }
 
 type SeatReservation struct {
@@ -830,29 +832,31 @@ WHERE
 
 		for _, seatReservation := range seatReservationList {
 			reservation := Reservation{}
-			query = "SELECT * FROM reservations WHERE reservation_id=?"
+			query = `
+				SELECT
+					r.*,
+					departure_station.id as departure_station_id,
+					arrival_station.id as arrival_station_id
+				FROM
+					reservations AS r
+					INNER JOIN station_master AS departure_station ON departure_station.name = r.departure
+					INNER JOIN station_master AS arrival_station ON arrival_station.name = r.arrival
+				WHERE
+					r.reservation_id=?
+			`
 			err = dbx.Get(&reservation, query, seatReservation.ReservationId)
 			if err != nil {
 				panic(err)
 			}
 
-			var departureStation, arrivalStation Station
-			query = "SELECT * FROM station_master WHERE name=?"
-
-			err = dbx.Get(&departureStation, query, reservation.Departure)
-			if err != nil {
-				panic(err)
-			}
-			err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-			if err != nil {
-				panic(err)
-			}
+			arrivalStationID := *reservation.ArrivalStationId
+			departureStationID := *reservation.DepartureStationId
 
 			if train.IsNobori {
 				// 上り
-				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+				if toStation.ID < arrivalStationID && fromStation.ID <= arrivalStationID {
 					// pass
-				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+				} else if toStation.ID >= departureStationID && fromStation.ID > departureStationID {
 					// pass
 				} else {
 					s.IsOccupied = true
@@ -861,9 +865,9 @@ WHERE
 			} else {
 				// 下り
 
-				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+				if fromStation.ID < departureStationID && toStation.ID <= departureStationID {
 					// pass
-				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+				} else if fromStation.ID >= arrivalStationID && toStation.ID > arrivalStationID {
 					// pass
 				} else {
 					s.IsOccupied = true
