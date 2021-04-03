@@ -64,6 +64,18 @@ type Train struct {
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 }
 
+type TrainWithDate struct {
+	Date         time.Time `json:"date" db:"date"`
+	DepartureAt  string    `json:"departure_at" db:"departure_at"`
+	TrainClass   string    `json:"train_class" db:"train_class"`
+	TrainName    string    `json:"train_name" db:"train_name"`
+	StartStation string    `json:"start_station" db:"start_station"`
+	LastStation  string    `json:"last_station" db:"last_station"`
+	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
+	departure    string    `json:"departure" db:"departure"`
+	arrival      string    `json:"arrival" db:"arrival"`
+}
+
 type Seat struct {
 	TrainClass    string `json:"train_class" db:"train_class"`
 	CarNumber     int    `json:"car_number" db:"car_number"`
@@ -459,6 +471,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	adult, _ := strconv.Atoi(r.URL.Query().Get("adult"))
 	child, _ := strconv.Atoi(r.URL.Query().Get("child"))
 
+    // TODO: nameにindex貼れそう
 	var fromStation, toStation Station
 	query := "SELECT * FROM station_master WHERE name=?"
 
@@ -504,10 +517,10 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var inArgs []interface{}
 
 	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? order by departure_at asc"
+		query := "SELECT tm.*,ttm.departure, ttm.arrival FROM train_master tm left join train_timetable_master ttm on tm.train_name = ttm.train_name WHERE date=? AND train_class IN (?) AND is_nobori=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=? order by departure_at asc"
+		query := "SELECT tm.*,ttm.departure, ttm.arrival FROM train_master tm left join train_timetable_master ttm on tm.train_name = ttm.train_name WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
@@ -515,8 +528,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+    TrainWithDateList := []TrainWithDate{}
 	trainList := []Train{}
-	err = dbx.Select(&trainList, inQuery, inArgs...)
+	// やること：
+	// trainListWithDateに取ってきて，trainListに戻す．
+	// forの中でvar departure, arrival stringにセットする．
+
+	// trainListにいれるクエリをここで実行
+	err = dbx.Select(&TrainWithDateList, inQuery, inArgs...)
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
 		return
@@ -534,14 +553,17 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	trainSearchResponseList := []TrainSearchResponse{}
 
-	for _, train := range trainList {
+    // 列車一覧ごとに
+	for _, train := range TrainWithDateList {
 		isSeekedToFirstStation := false
 		isContainsOriginStation := false
 		isContainsDestStation := false
 		i := 0
 
+        // 駅の情報
 		for _, station := range stations {
 
+            // 止まる駅に限定
 			if !isSeekedToFirstStation {
 				// 駅リストを列車の発駅まで読み飛ばして頭出しをする
 				// 列車の発駅以前は止まらないので無視して良い
@@ -574,18 +596,23 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			i++
 		}
 
+        // 駅情報が正しい時，列車情報を取得
 		if isContainsOriginStation && isContainsDestStation {
 			// 列車情報
 
 			// 所要時間
 			var departure, arrival string
 
+            // ここを消したい
 			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
 			if err != nil {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 
+			departureDate :=
+
+            // 取ってきた出発時間をdate型に変更
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
 			if err != nil {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
@@ -597,6 +624,8 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+            // 取ってきた到着時間をdateに変更
+            // ここを消したい
 			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, toStation.Name)
 			if err != nil {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
