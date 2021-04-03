@@ -250,7 +250,7 @@ const (
 	availableDays = 10
 )
 var cancelPaymentInformationBulkRequest CancelPaymentInformationBulkRequest
-
+var cancelPaymentInformationBulkRequestMu sync.Mutex
 var (
 	store sessions.Store = sessions.NewCookieStore([]byte(secureRandomStr(20)))
 )
@@ -2062,9 +2062,9 @@ func cancelPaymentService() {
 	var wg sync.WaitGroup
 	sem := make(chan bool, concurrency)
 	for {
+		cancelPaymentInformationBulkRequestMu.Lock()
 		sem <- true
 		wg.Add(1)
-		time.Sleep(25 * time.Microsecond)
 		go func() {
 			fmt.Println("バッチ処理始めます！")
 			defer wg.Done()
@@ -2072,6 +2072,8 @@ func cancelPaymentService() {
 			requestBulkPaymentCancel()
 			fmt.Println("バッチ処理やめます！")
 		}()
+		cancelPaymentInformationBulkRequestMu.Unlock()
+		time.Sleep(25 * time.Microsecond)
 	}
 }
 
