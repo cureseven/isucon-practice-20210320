@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -217,6 +218,14 @@ type CancelPaymentInformationRequest struct {
 	PaymentId string `json:"payment_id"`
 }
 
+type CancelPaymentInformationBulkRequest struct {
+	PaymentID []string `json:"payment_id"`
+}
+
+type CancelPaymentInformationBulkResponse struct {
+	Deleted int64 `json:"deleted"`
+}
+
 type CancelPaymentInformationResponse struct {
 	IsOk bool `json:"is_ok"`
 }
@@ -238,6 +247,7 @@ const (
 	sessionName   = "session_isutrain"
 	availableDays = 10
 )
+var cancelPaymentInformationBulkRequest CancelPaymentInformationBulkRequest
 
 var (
 	store sessions.Store = sessions.NewCookieStore([]byte(secureRandomStr(20)))
@@ -1987,62 +1997,7 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case "done":
 		// 支払いをキャンセルする
-		payInfo := CancelPaymentInformationRequest{reservation.PaymentId}
-		j, err := json.Marshal(payInfo)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "JSON Marshalに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-
-		payment_api := os.Getenv("PAYMENT_API")
-		if payment_api == "" {
-			payment_api = "http://payment:5000"
-		}
-
-		client := &http.Client{Timeout: time.Duration(10) * time.Second}
-		req, err := http.NewRequest("DELETE", payment_api+"/payment/"+reservation.PaymentId, bytes.NewBuffer(j))
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "HTTPリクエストの作成に失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, resp.StatusCode, "HTTP DELETEに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		defer resp.Body.Close()
-
-		// リクエスト失敗
-		if resp.StatusCode != http.StatusOK {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "決済のキャンセルに失敗しました")
-			log.Println(resp.StatusCode)
-			return
-		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			tx.Rollback()
-			errorResponse(w, http.StatusInternalServerError, "レスポンスの読み込みに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-
-		// リクエスト取り出し
-		output := CancelPaymentInformationResponse{}
-		err = json.Unmarshal(body, &output)
-		if err != nil {
-			errorResponse(w, http.StatusInternalServerError, "JSON parseに失敗しました")
-			log.Println(err.Error())
-			return
-		}
-		fmt.Println(output)
+		cancelPaymentInformationBulkRequest.PaymentID = append(cancelPaymentInformationBulkRequest.PaymentID, reservation.PaymentId)
 	default:
 		// pass(requesting状態のものはpayment_id無いので叩かない)
 	}
@@ -2107,6 +2062,76 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
 	messageResponse(w, "ok")
 }
+
+func cancelPaymentService() {
+	concurrency := 1
+	var wg sync.WaitGroup
+	sem := make(chan bool, concurrency)
+	for {
+		sem <- true
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			requestBulkPaymentCancel()
+			time.Sleep(3 * time.Second)
+		}()
+	}
+}
+
+func requestBulkPaymentCancel() {
+	if len(cancelPaymentInformationBulkRequest.PaymentID) <= 0 {
+		return
+	}
+	j, err := json.Marshal(cancelPaymentInformationBulkRequest)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+
+	payment_api := os.Getenv("PAYMENT_API")
+	if payment_api == "" {
+		payment_api = "http://payment:5000"
+	}
+
+	client := &http.Client{Timeout: time.Duration(10) * time.Second}
+	req, err := http.NewRequest("POST", payment_api+"/payment/_bulk", bytes.NewBuffer(j))
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	// リクエスト失敗
+	if resp.StatusCode != http.StatusOK {
+		log.Println(resp.StatusCode)
+		return
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+
+	// リクエスト取り出し
+	output := CancelPaymentInformationBulkResponse{}
+	err = json.Unmarshal(body, &output)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	fmt.Println(output)
+
+	// 配列の初期化
+	cancelPaymentInformationBulkRequest.PaymentID = []string{}
+}
+
 
 func main() {
 	// MySQL関連のお膳立て
@@ -2177,6 +2202,6 @@ func main() {
 
 	fmt.Println(banner)
 	err = http.ListenAndServe(":8000", mux)
-
+	defer cancelPaymentService()
 	log.Fatal(err)
 }
