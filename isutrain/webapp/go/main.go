@@ -63,18 +63,6 @@ type Train struct {
 	LastStation  string    `json:"last_station" db:"last_station"`
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 	departure    string    `json:"departure" db:"departure"`
-    arrival      string    `json:"arrival" db:"arrival"`
-}
-
-type TrainWithDate struct {
-	Date         time.Time `json:"date" db:"date"`
-	DepartureAt  string    `json:"departure_at" db:"departure_at"`
-	TrainClass   string    `json:"train_class" db:"train_class"`
-	TrainName    string    `json:"train_name" db:"train_name"`
-	StartStation string    `json:"start_station" db:"start_station"`
-	LastStation  string    `json:"last_station" db:"last_station"`
-	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
-	departure    string    `json:"departure" db:"departure"`
 	arrival      string    `json:"arrival" db:"arrival"`
 }
 
