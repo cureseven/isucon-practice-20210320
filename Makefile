@@ -16,7 +16,7 @@ build:
 	 go build -o bin/main  isutrain/webapp/go/main.go isutrain/webapp/go/utils.go
 
 bench:
-	ssh ubuntu@18.181.154.178 "make -C /home/admin/isucon bench"
+	ssh ubuntu@13.113.182.64 "make -C /home/admin/isucon bench"
 
 kataribe:
 	cd  ../ && sudo cat /var/log/nginx/access.log | ./kataribe
