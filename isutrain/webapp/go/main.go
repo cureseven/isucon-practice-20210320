@@ -2118,6 +2118,10 @@ func main() {
 		for {
 			time.Sleep(time.Second)
 
+			if len(PaymentCancelQueuedPaymentIds) == 0 {
+				continue
+			}
+
 			PaymentCancelQueueLock.Lock()
 			defer PaymentCancelQueueLock.Unlock()
 
