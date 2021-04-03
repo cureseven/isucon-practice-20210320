@@ -2068,7 +2068,7 @@ func cancelPaymentService() {
 			defer wg.Done()
 			defer func() { <-sem }()
 			requestBulkPaymentCancel()
-			time.Sleep(3 * time.Second)
+			time.Sleep(1 * time.Second)
 		}()
 	}
 }
