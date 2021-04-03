@@ -828,8 +828,6 @@ WHERE
 			return
 		}
 
-		fmt.Println(seatReservationList)
-
 		for _, seatReservation := range seatReservationList {
 			reservation := Reservation{}
 			query = "SELECT * FROM reservations WHERE reservation_id=?"
@@ -874,7 +872,6 @@ WHERE
 			}
 		}
 
-		fmt.Println(s.IsOccupied)
 		seatInformationList = append(seatInformationList, s)
 	}
 
