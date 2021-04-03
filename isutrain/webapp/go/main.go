@@ -74,28 +74,28 @@ type Seat struct {
 }
 
 type Reservation struct {
-	ReservationId      int        `json:"reservation_id" db:"reservation_id"`
-	UserId             *int       `json:"user_id" db:"user_id"`
-	Date               *time.Time `json:"date" db:"date"`
-	TrainClass         string     `json:"train_class" db:"train_class"`
-	TrainName          string     `json:"train_name" db:"train_name"`
-	Departure          string     `json:"departure" db:"departure"`
-	DepartureStationId *int       `json:",omitempty" db:"departure_station_id"`
-	Arrival            string     `json:"arrival" db:"arrival"`
-	ArrivalStationId   *int       `json:",omitempty" db:"arrival_station_id"`
-	PaymentStatus      string     `json:"payment_status" db:"payment_status"`
-	Status             string     `json:"status" db:"status"`
-	PaymentId          string     `json:"payment_id,omitempty" db:"payment_id"`
-	Adult              int        `json:"adult" db:"adult"`
-	Child              int        `json:"child" db:"child"`
-	Amount             int        `json:"amount" db:"amount"`
+	ReservationId int        `json:"reservation_id" db:"reservation_id"`
+	UserId        *int       `json:"user_id" db:"user_id"`
+	Date          *time.Time `json:"date" db:"date"`
+	TrainClass    string     `json:"train_class" db:"train_class"`
+	TrainName     string     `json:"train_name" db:"train_name"`
+	Departure     string     `json:"departure" db:"departure"`
+	Arrival       string     `json:"arrival" db:"arrival"`
+	PaymentStatus string     `json:"payment_status" db:"payment_status"`
+	Status        string     `json:"status" db:"status"`
+	PaymentId     string     `json:"payment_id,omitempty" db:"payment_id"`
+	Adult         int        `json:"adult" db:"adult"`
+	Child         int        `json:"child" db:"child"`
+	Amount        int        `json:"amount" db:"amount"`
 }
 
 type SeatReservation struct {
-	ReservationId int    `json:"reservation_id,omitempty" db:"reservation_id"`
-	CarNumber     int    `json:"car_number,omitempty" db:"car_number"`
-	SeatRow       int    `json:"seat_row" db:"seat_row"`
-	SeatColumn    string `json:"seat_column" db:"seat_column"`
+	ReservationId      int    `json:"reservation_id,omitempty" db:"reservation_id"`
+	CarNumber          int    `json:"car_number,omitempty" db:"car_number"`
+	SeatRow            int    `json:"seat_row" db:"seat_row"`
+	SeatColumn         string `json:"seat_column" db:"seat_column"`
+	DepartureStationId *int   `json:",omitempty" db:"departure_station_id"`
+	ArrivalStationId   *int   `json:",omitempty" db:"arrival_station_id"`
 }
 
 // 未整理
@@ -810,12 +810,23 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		seatReservationList := []SeatReservation{}
 
 		query := `
-SELECT s.*
-FROM seat_reservations s, reservations r
-WHERE
-	r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?
-`
-
+			SELECT
+				s.*,
+				departure_station.id as departure_station_id,
+				arrival_station.id as arrival_station_id
+			FROM
+				seat_reservations AS s,
+				reservations AS r
+				INNER JOIN station_master AS departure_station ON departure_station.name = r.departure
+				INNER JOIN station_master AS arrival_station ON arrival_station.name = r.arrival
+			WHERE
+				r.date=?
+				AND r.train_class=?
+				AND r.train_name=?
+				AND car_number=?
+				AND seat_row=?
+				AND seat_column=?
+		`
 		err = dbx.Select(
 			&seatReservationList, query,
 			date.Format("2006/01/02"),
@@ -831,26 +842,8 @@ WHERE
 		}
 
 		for _, seatReservation := range seatReservationList {
-			reservation := Reservation{}
-			query = `
-				SELECT
-					r.*,
-					departure_station.id as departure_station_id,
-					arrival_station.id as arrival_station_id
-				FROM
-					reservations AS r
-					INNER JOIN station_master AS departure_station ON departure_station.name = r.departure
-					INNER JOIN station_master AS arrival_station ON arrival_station.name = r.arrival
-				WHERE
-					r.reservation_id=?
-			`
-			err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-			if err != nil {
-				panic(err)
-			}
-
-			arrivalStationID := *reservation.ArrivalStationId
-			departureStationID := *reservation.DepartureStationId
+			departureStationID := *seatReservation.DepartureStationId
+			arrivalStationID := *seatReservation.ArrivalStationId
 
 			if train.IsNobori {
 				// 上り
