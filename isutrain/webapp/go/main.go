@@ -521,11 +521,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trainList := []Train{}
-	// やること：
-	// trainListWithDateに取ってきて，trainListに戻す．
-	// forの中でvar departure, arrival stringにセットする．
 
-	// trainListにいれるクエリをここで実行
 	err = dbx.Select(&trainList, inQuery, inArgs...)
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
@@ -544,17 +540,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	trainSearchResponseList := []TrainSearchResponse{}
 
-    // 列車一覧ごとに
 	for _, train := range trainList {
 		isSeekedToFirstStation := false
 		isContainsOriginStation := false
 		isContainsDestStation := false
 		i := 0
 
-        // 駅の情報
 		for _, station := range stations {
 
-            // 止まる駅に限定
 			if !isSeekedToFirstStation {
 				// 駅リストを列車の発駅まで読み飛ばして頭出しをする
 				// 列車の発駅以前は止まらないので無視して良い
@@ -587,16 +580,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			i++
 		}
 
-        // 駅情報が正しい時，列車情報を取得
 		if isContainsOriginStation && isContainsDestStation {
 			// 列車情報
 
 			// 所要時間
 			var departure, arrival string
 			departure := *train.departure
-            arrival := *train.arrival
+			arrival := *train.arrival
 
-            // 取ってきた出発時間をdate型に変更
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
 			if err != nil {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
