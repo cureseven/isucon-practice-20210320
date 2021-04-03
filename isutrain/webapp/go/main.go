@@ -608,13 +608,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			departure := *train.departure
             arrival := *train.arrival
 
-//             // ここを消したい
-// 			err = dbx.Get(&departure, "SELECT departure FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, fromStation.Name)
-// 			if err != nil {
-// 				errorResponse(w, http.StatusInternalServerError, err.Error())
-// 				return
-// 			}
-
             // 取ってきた出発時間をdate型に変更
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
 			if err != nil {
@@ -626,14 +619,6 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 				// 乗りたい時刻より出発時刻が前なので除外
 				continue
 			}
-
-//             // 取ってきた到着時間をdateに変更
-//             // ここを消したい
-// 			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, toStation.Name)
-// 			if err != nil {
-// 				errorResponse(w, http.StatusInternalServerError, err.Error())
-// 				return
-// 			}
 
 			premium_avail_seats, err := train.getAvailableSeats(fromStation, toStation, "premium", false)
 			if err != nil {
