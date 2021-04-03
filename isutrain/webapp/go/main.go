@@ -4,6 +4,7 @@ import (
 	"bytes"
 	crand "crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -225,7 +225,7 @@ type CancelPaymentInformationBulkRequest struct {
 }
 
 type CancelPaymentInformationBulkResponse struct {
-	Deleted int64 `json:"deleted"`
+	Deleted int `json:"deleted"`
 }
 
 type CancelPaymentInformationResponse struct {
@@ -249,8 +249,7 @@ const (
 	sessionName   = "session_isutrain"
 	availableDays = 10
 )
-var cancelPaymentInformationBulkRequest CancelPaymentInformationBulkRequest
-var cancelPaymentInformationBulkRequestMu sync.Mutex
+
 var (
 	store sessions.Store = sessions.NewCookieStore([]byte(secureRandomStr(20)))
 )
@@ -1984,16 +1983,10 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusInternalServerError, "予約情報の検索に失敗しました")
 	}
 
-	switch reservation.Status {
-	case "rejected":
+	if reservation.Status == "rejected"{
 		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "何らかの理由により予約はRejected状態です")
 		return
-	case "done":
-		// 支払いをキャンセルする
-		cancelPaymentInformationBulkRequest.PaymentID = append(cancelPaymentInformationBulkRequest.PaymentID, reservation.PaymentId)
-	default:
-		// pass(requesting状態のものはpayment_id無いので叩かない)
 	}
 
 	query = "DELETE FROM reservations WHERE reservation_id=? AND user_id=?"
@@ -2019,6 +2012,10 @@ func userReservationCancelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx.Commit()
+
+	if reservation.Status == "done" {
+		cancelPaymentService <- reservation.PaymentId
+	}
 	messageResponse(w, "cancell complete")
 }
 
@@ -2056,79 +2053,65 @@ func settingsHandler(w http.ResponseWriter, r *http.Request) {
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
 	messageResponse(w, "ok")
 }
+var cancelPaymentService = func() chan string {
+	ch := make(chan string, 10000)
+	ticker := time.Tick(100 * time.Millisecond)
+	ids := make([]string, 0, 10000)
+	go func() {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{
+			Timeout:   time.Duration(10) * time.Second,
+			Transport: tr,
+		}
+		for  {
+			select {
+				case <- ticker:
+					if len(ids) == 0 {
+						continue
+					}
+					log.Println("cancel: tick")
+					cancelInfo := CancelPaymentInformationBulkRequest{PaymentID: ids}
+					j, err := json.Marshal(cancelInfo)
+					if err != nil {
+						log.Fatalln(err.Error())
+					}
 
-func cancelPaymentService() {
-	concurrency := 1
-	var wg sync.WaitGroup
-	sem := make(chan bool, concurrency)
-	for {
-		cancelPaymentInformationBulkRequestMu.Lock()
-		sem <- true
-		wg.Add(1)
-		go func() {
-			fmt.Println("バッチ処理始めます！")
-			defer wg.Done()
-			defer func() { <-sem }()
-			requestBulkPaymentCancel()
-			fmt.Println("バッチ処理やめます！")
-		}()
-		cancelPaymentInformationBulkRequestMu.Unlock()
-		time.Sleep(25 * time.Microsecond)
-	}
-}
+					payment_api := os.Getenv("PAYMENT_API")
+					if payment_api == "" {
+						payment_api = "http://payment:5000"
+					}
 
-func requestBulkPaymentCancel() {
-	if len(cancelPaymentInformationBulkRequest.PaymentID) <= 0 {
-		return
-	}
-	j, err := json.Marshal(cancelPaymentInformationBulkRequest)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
+					resp, err := client.Post(payment_api+"/payment/_bulk", "application/json", bytes.NewBuffer(j))
+					if err != nil {
+						log.Println("cancel: ", err.Error())
+					}
 
-	payment_api := os.Getenv("PAYMENT_API")
-	if payment_api == "" {
-		payment_api = "http://payment:5000"
-	}
+					body, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						log.Println("cancel: ", err.Error())
+					}
 
-	client := &http.Client{Timeout: time.Duration(10) * time.Second}
-	req, err := http.NewRequest("POST", payment_api+"/payment/_bulk", bytes.NewBuffer(j))
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	// リクエスト失敗
-	if resp.StatusCode != http.StatusOK {
-		log.Println(resp.StatusCode)
-		return
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-
-	// リクエスト取り出し
-	output := CancelPaymentInformationBulkResponse{}
-	err = json.Unmarshal(body, &output)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	fmt.Println(output)
-
-	// 配列の初期化
-	cancelPaymentInformationBulkRequest.PaymentID = []string{}
-}
+					output := CancelPaymentInformationBulkResponse{}
+					err = json.Unmarshal(body, &output)
+					if err != nil {
+						log.Println("cancel: ", err.Error())
+					}
+					if output.Deleted != len(ids) {
+						log.Println("cancel: ", "requested number of ids(", len(ids), "), deleted(", output.Deleted, ")")
+					}
+					ids = ids[:0]
+					resp.Body.Close()
+					log.Println("cancel: finish cancel")
+			case id := <-ch:
+				ids = append(ids, id)
+				log.Println("cancel: id", id, "added")
+			}
+		}
+	}()
+	return ch
+}()
 
 
 func main() {
@@ -2203,6 +2186,5 @@ func main() {
 
 	fmt.Println(banner)
 	err = http.ListenAndServe(":8000", mux)
-	defer cancelPaymentService()
 	log.Fatal(err)
 }
