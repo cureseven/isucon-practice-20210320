@@ -91,10 +91,12 @@ type Reservation struct {
 }
 
 type SeatReservation struct {
-	ReservationId int    `json:"reservation_id,omitempty" db:"reservation_id"`
-	CarNumber     int    `json:"car_number,omitempty" db:"car_number"`
-	SeatRow       int    `json:"seat_row" db:"seat_row"`
-	SeatColumn    string `json:"seat_column" db:"seat_column"`
+	ReservationId      int    `json:"reservation_id,omitempty" db:"reservation_id"`
+	CarNumber          int    `json:"car_number,omitempty" db:"car_number"`
+	SeatRow            int    `json:"seat_row" db:"seat_row"`
+	SeatColumn         string `json:"seat_column" db:"seat_column"`
+	DepartureStationId *int   `json:",omitempty" db:"departure_station_id"`
+	ArrivalStationId   *int   `json:",omitempty" db:"arrival_station_id"`
 }
 
 // 未整理
@@ -514,10 +516,10 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var inArgs []interface{}
 
 	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
@@ -748,7 +750,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 対象列車の取得
 	var train Train
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 	err = dbx.Get(&train, query, date.Format("2006/01/02"), trainClass, trainName)
 	if err == sql.ErrNoRows {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
@@ -818,12 +820,23 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 		seatReservationList := []SeatReservation{}
 
 		query := `
-SELECT s.*
-FROM seat_reservations s, reservations r
-WHERE
-	r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=?
-`
-
+			SELECT
+				s.*,
+				departure_station.id as departure_station_id,
+				arrival_station.id as arrival_station_id
+			FROM
+				seat_reservations AS s,
+				reservations AS r
+				INNER JOIN station_master AS departure_station ON departure_station.name = r.departure
+				INNER JOIN station_master AS arrival_station ON arrival_station.name = r.arrival
+			WHERE
+				r.date=?
+				AND r.train_class=?
+				AND r.train_name=?
+				AND car_number=?
+				AND seat_row=?
+				AND seat_column=?
+		`
 		err = dbx.Select(
 			&seatReservationList, query,
 			date.Format("2006/01/02"),
@@ -838,33 +851,15 @@ WHERE
 			return
 		}
 
-		fmt.Println(seatReservationList)
-
 		for _, seatReservation := range seatReservationList {
-			reservation := Reservation{}
-			query = "SELECT * FROM reservations WHERE reservation_id=?"
-			err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-			if err != nil {
-				panic(err)
-			}
-
-			var departureStation, arrivalStation Station
-			query = "SELECT * FROM station_master WHERE name=?"
-
-			err = dbx.Get(&departureStation, query, reservation.Departure)
-			if err != nil {
-				panic(err)
-			}
-			err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-			if err != nil {
-				panic(err)
-			}
+			departureStationID := *seatReservation.DepartureStationId
+			arrivalStationID := *seatReservation.ArrivalStationId
 
 			if train.IsNobori {
 				// 上り
-				if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+				if toStation.ID < arrivalStationID && fromStation.ID <= arrivalStationID {
 					// pass
-				} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+				} else if toStation.ID >= departureStationID && fromStation.ID > departureStationID {
 					// pass
 				} else {
 					s.IsOccupied = true
@@ -873,9 +868,9 @@ WHERE
 			} else {
 				// 下り
 
-				if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+				if fromStation.ID < departureStationID && toStation.ID <= departureStationID {
 					// pass
-				} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+				} else if fromStation.ID >= arrivalStationID && toStation.ID > arrivalStationID {
 					// pass
 				} else {
 					s.IsOccupied = true
@@ -884,7 +879,6 @@ WHERE
 			}
 		}
 
-		fmt.Println(s.IsOccupied)
 		seatInformationList = append(seatInformationList, s)
 	}
 
@@ -970,7 +964,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	// 止まらない駅の予約を取ろうとしていないかチェックする
 	// 列車データを取得
 	tmas := Train{}
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 	err = tx.Get(
 		&tmas, query,
 		date.Format("2006/01/02"),
@@ -1119,7 +1113,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		//当該列車・号車中の空き座席検索
 		var train Train
-		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 		err = dbx.Get(&train, query, date.Format("2006/01/02"), req.TrainClass, req.TrainName)
 		if err == sql.ErrNoRows {
 			panic(err)
@@ -1332,7 +1326,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// train_masterから列車情報を取得(上り・下りが分かる)
 		tmas = Train{}
-		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 		err = tx.Get(
 			&tmas, query,
 			date.Format("2006/01/02"),
@@ -2163,7 +2157,7 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		user,
 		password,
 		host,
@@ -2176,6 +2170,9 @@ func main() {
 		log.Fatalf("failed to connect to DB: %s.", err.Error())
 	}
 	defer dbx.Close()
+
+	dbx.SetMaxOpenConns(100)
+    dbx.SetMaxIdleConns(100)
 
 	// HTTP
 
