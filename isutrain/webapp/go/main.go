@@ -504,10 +504,10 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var inArgs []interface{}
 
 	if trainClass == "" {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
-		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class IN (?) AND is_nobori=? AND train_class=? order by departure_at asc"
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
@@ -738,7 +738,7 @@ func trainSeatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 対象列車の取得
 	var train Train
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 	err = dbx.Get(&train, query, date.Format("2006/01/02"), trainClass, trainName)
 	if err == sql.ErrNoRows {
 		errorResponse(w, http.StatusNotFound, "列車が存在しません")
@@ -960,7 +960,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 	// 止まらない駅の予約を取ろうとしていないかチェックする
 	// 列車データを取得
 	tmas := Train{}
-	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+	query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 	err = tx.Get(
 		&tmas, query,
 		date.Format("2006/01/02"),
@@ -1109,7 +1109,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		//当該列車・号車中の空き座席検索
 		var train Train
-		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+		query := "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 		err = dbx.Get(&train, query, date.Format("2006/01/02"), req.TrainClass, req.TrainName)
 		if err == sql.ErrNoRows {
 			panic(err)
@@ -1322,7 +1322,7 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// train_masterから列車情報を取得(上り・下りが分かる)
 		tmas = Train{}
-		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=?"
+		query = "SELECT * FROM train_master WHERE date=? AND train_class=? AND train_name=? order by departure_at asc"
 		err = tx.Get(
 			&tmas, query,
 			date.Format("2006/01/02"),
