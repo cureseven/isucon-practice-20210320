@@ -1144,7 +1144,25 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 			for _, seat := range seatList {
 				s := SeatInformation{seat.SeatRow, seat.SeatColumn, seat.SeatClass, seat.IsSmokingSeat, false}
 				seatReservationList := []SeatReservation{}
-				query = "SELECT s.* FROM seat_reservations s, reservations r WHERE r.date=? AND r.train_class=? AND r.train_name=? AND car_number=? AND seat_row=? AND seat_column=? FOR UPDATE"
+				query = `
+					SELECT
+						s.*,
+						departure_station.id as departure_station_id,
+						arrival_station.id as arrival_station_id
+					FROM
+						seat_reservations AS s,
+						reservations AS r
+						INNER JOIN station_master AS departure_station ON departure_station.name = r.departure
+						INNER JOIN station_master AS arrival_station ON arrival_station.name = r.arrival
+					WHERE
+						r.date=?
+						AND r.train_class=?
+						AND r.train_name=?
+						AND car_number=?
+						AND seat_row=?
+						AND seat_column=?
+					FOR UPDATE 
+				`
 				err = dbx.Select(
 					&seatReservationList, query,
 					date.Format("2006/01/02"),
@@ -1161,41 +1179,23 @@ func trainReservationHandler(w http.ResponseWriter, r *http.Request) {
 				}
 
 				for _, seatReservation := range seatReservationList {
-					reservation := Reservation{}
-					query = "SELECT * FROM reservations WHERE reservation_id=? FOR UPDATE"
-					err = dbx.Get(&reservation, query, seatReservation.ReservationId)
-					if err != nil {
-						panic(err)
-					}
-
-					var departureStation, arrivalStation Station
-					query = "SELECT * FROM station_master WHERE name=?"
-
-					err = dbx.Get(&departureStation, query, reservation.Departure)
-					if err != nil {
-						tx.Rollback()
-						panic(err)
-					}
-					err = dbx.Get(&arrivalStation, query, reservation.Arrival)
-					if err != nil {
-						tx.Rollback()
-						panic(err)
-					}
+					departureStationID := *seatReservation.DepartureStationId
+					arrivalStationID := *seatReservation.ArrivalStationId
 
 					if train.IsNobori {
 						// 上り
-						if toStation.ID < arrivalStation.ID && fromStation.ID <= arrivalStation.ID {
+						if toStation.ID < arrivalStationID && fromStation.ID <= arrivalStationID {
 							// pass
-						} else if toStation.ID >= departureStation.ID && fromStation.ID > departureStation.ID {
+						} else if toStation.ID >= departureStationID && fromStation.ID > departureStationID {
 							// pass
 						} else {
 							s.IsOccupied = true
 						}
 					} else {
 						// 下り
-						if fromStation.ID < departureStation.ID && toStation.ID <= departureStation.ID {
+						if fromStation.ID < departureStationID && toStation.ID <= departureStationID {
 							// pass
-						} else if fromStation.ID >= arrivalStation.ID && toStation.ID > arrivalStation.ID {
+						} else if fromStation.ID >= arrivalStationID && toStation.ID > arrivalStationID {
 							// pass
 						} else {
 							s.IsOccupied = true
