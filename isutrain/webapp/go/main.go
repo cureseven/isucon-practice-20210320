@@ -2123,7 +2123,8 @@ func main() {
 			}
 
 			PaymentCancelQueueLock.Lock()
-			defer PaymentCancelQueueLock.Unlock()
+			paymentIds := PaymentCancelQueuedPaymentIds
+			PaymentCancelQueueLock.Unlock()
 
 			paymentApi := os.Getenv("PAYMENT_API")
 			if paymentApi == "" {
@@ -2133,7 +2134,7 @@ func main() {
 			j, err := json.Marshal(struct {
 				PaymentId []string `json:"payment_id"`
 			}{
-				PaymentId: PaymentCancelQueuedPaymentIds,
+				PaymentId: paymentIds,
 			})
 			if err != nil {
 				panic(err)
@@ -2158,8 +2159,9 @@ func main() {
 				log.Println("bulk cancelがダメだったっぽいわ")
 			}
 
-			PaymentCancelQueuedPaymentIds = []string{}
-
+			PaymentCancelQueueLock.Lock()
+			PaymentCancelQueuedPaymentIds = PaymentCancelQueuedPaymentIds[0:len(paymentIds)]
+			PaymentCancelQueueLock.Unlock()
 		}
 	}()
 
