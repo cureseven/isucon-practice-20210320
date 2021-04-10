@@ -594,8 +594,8 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			// 所要時間
 			var departure, arrival string
 
-			departure = *train.departure
-			arrival = *train.arrival
+			departure := *train.departure
+			arrival := *train.arrival
 
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
 			if err != nil {
