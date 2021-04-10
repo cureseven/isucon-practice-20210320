@@ -511,13 +511,13 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			left join
 				train_timetable_master ttm
 			on
-				tm.train_name = ttm.train_name and ttm.station =?
+				tm.train_name = ttm.train_name and ttm.date=? AND ttm.station=?
 			WHERE
 				tm.date=? and tm.train_class IN(?) AND tm.is_nobori = ?
 			order by
 				departure_at asc
 			`
-		inQuery, inArgs, err = sqlx.In(query, fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori)
+		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
 		query := `
 			SELECT
@@ -527,12 +527,12 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			left join
 				train_timetable_master ttm
 			on
-				tm.train_name = ttm.train_name and ttm.station =?
+				tm.train_name = ttm.train_name and ttm.date=? AND ttm.train_class=? AND ttm.train_name=? AND ttm.station=?
 			WHERE
 				tm.date=? and tm.train_class IN(?) AND tm.is_nobori =? AND tm.train_class =?
 			order by
 				departure_at asc`
-		inQuery, inArgs, err = sqlx.In(query, fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
+		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), trainClass, fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
