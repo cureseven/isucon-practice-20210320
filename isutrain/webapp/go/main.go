@@ -67,6 +67,15 @@ type Train struct {
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 }
 
+type TrainTimeTable struct {
+	Date       string `db:"date"`
+	TrainClass string `db:"train_class"`
+	TrainName  string `db:"train_name"`
+	Station    string `db:"station"`
+	Departure  string `db:"departure"`
+	Arrival    string `db:"arrival"`
+}
+
 type Seat struct {
 	TrainClass    string `json:"train_class" db:"train_class"`
 	CarNumber     int    `json:"car_number" db:"car_number"`
