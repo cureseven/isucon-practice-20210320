@@ -5,6 +5,7 @@ gogo:
 	ssh isucon9-final-c "sudo systemctl stop mysql"
 	sudo truncate --size 0 /var/log/nginx/access.log
 	sudo truncate --size 0 /var/log/nginx/error.log
+	ssh isucon9-final-c "sudo truncate --size 0 /tmp/mysql-slow.log"
 	$(MAKE) build
 	ssh isucon9-final-c "sudo systemctl start mysql "
 	#sudo systemctl start isutrain-go.service
@@ -16,7 +17,7 @@ build:
 	 go build -o bin/main  isutrain/webapp/go/main.go isutrain/webapp/go/utils.go
 
 bench:
-	ssh ubuntu@13.113.182.64 "make -C /home/admin/isucon bench"
+	ssh isucon9-final-bench "make -C /home/admin/isucon bench"
 
 kataribe:
 	cd  ../ && sudo cat /var/log/nginx/access.log | ./kataribe
