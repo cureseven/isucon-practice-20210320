@@ -505,7 +505,7 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 		query := `
 			SELECT
 				tm.*,
-				ttm.departure as departure,
+				ttm.departure as departure
 			FROM
 				train_master tm
 			left join
