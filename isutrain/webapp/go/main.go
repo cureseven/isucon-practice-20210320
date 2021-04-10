@@ -31,7 +31,7 @@ var (
 	TrainClassMap                 = map[string]string{"express": "最速", "semi_express": "中間", "local": "遅いやつ"}
 	PaymentCancelQueuedPaymentIds []string
 	PaymentCancelQueueLock        sync.Mutex
-	StationMasterById = map[int]Station{}
+	Stations                      = map[int]Station{}
 )
 
 var dbx *sqlx.DB
@@ -348,26 +348,22 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	// 料金計算メモ
 	// 距離運賃(円) * 期間倍率(繁忙期なら2倍等) * 車両クラス倍率(急行・各停等) * 座席クラス倍率(プレミアム・指定席・自由席)
 	//
-	var err error
 	// From
-	if  _, ok := StationMasterById[depStation]; !ok {
-		return 0,errors.New("見つからなかった")
+	fromStation, ok := Stations[depStation]
+	if !ok {
+		return 0, errors.New("見つからなかった")
 	}
-
-	fromStation := StationMasterById[depStation]
 
 	// To
-	if  _, ok := StationMasterById[destStation]; !ok {
-		return 0,errors.New("見つからなかった")
+	toStation, ok := Stations[destStation]
+	if !ok {
+		return 0, errors.New("見つからなかった")
 	}
-	toStation := StationMasterById[destStation]
 
-	fmt.Println("distance", math.Abs(toStation.Distance-fromStation.Distance))
 	distFare, err := getDistanceFare(math.Abs(toStation.Distance - fromStation.Distance))
 	if err != nil {
 		return 0, err
 	}
-	fmt.Println("distFare", distFare)
 
 	// 期間・車両・座席クラス倍率
 	fareList := []Fare{}
@@ -389,8 +385,6 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 			selectedFare = fare
 		}
 	}
-
-	fmt.Println("%%%%%%%%%%%%%%%%%%%")
 
 	return int(float64(distFare) * selectedFare.FareMultiplier), nil
 }
@@ -2036,21 +2030,21 @@ func dummyHandler(w http.ResponseWriter, r *http.Request) {
 	messageResponse(w, "ok")
 }
 
-func initStationMaster() {
-	var stationMaster []Station
+func initStations() {
+	var stations []Station
 
 	query := "SELECT * FROM station_master ORDER BY id"
-	err := dbx.Select(&stationMaster, query)
+	err := dbx.Select(&stations, query)
 	if err != nil {
-		fmt.Println("DB:取得できなかった")
+		panic("DB:取得できなかった")
 		return
 	}
 
-	for i := len(stationMaster) - 1; i >= 0; i-- {
-		StationMasterById[stationMaster[i].ID] = stationMaster[i]
+	Stations = make(map[int]Station, len(stations))
+	for _, s := range stations {
+		Stations[s.ID] = s
 	}
 }
-
 
 func main() {
 	// MySQL関連のお膳立て
@@ -2121,7 +2115,7 @@ func main() {
 	mux.HandleFunc(pat.Get("/api/user/reservations"), userReservationsHandler)
 	mux.HandleFunc(pat.Get("/api/user/reservations/:item_id"), userReservationResponseHandler)
 	mux.HandleFunc(pat.Post("/api/user/reservations/:item_id/cancel"), userReservationCancelHandler)
-	initStationMaster()
+	initStations()
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {

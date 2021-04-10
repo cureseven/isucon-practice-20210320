@@ -9,5 +9,4 @@ require (
 	github.com/pkg/errors v0.9.1
 	goji.io v2.0.2+incompatible
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
-	github.com/pkg/errors v0.9.1
 )
