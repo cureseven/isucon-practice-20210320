@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
 	"math"
@@ -348,23 +349,16 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	// 距離運賃(円) * 期間倍率(繁忙期なら2倍等) * 車両クラス倍率(急行・各停等) * 座席クラス倍率(プレミアム・指定席・自由席)
 	//
 	var err error
-	query := "SELECT * FROM station_master WHERE id=?"
-
 	// From
 	if  _, ok := StationMasterById[depStation]; !ok {
-		return 0, err
+		return 0,errors.New("見つからなかった")
 	}
-	if err != nil {
-		return 0, err
-	}
+
 	fromStation := StationMasterById[depStation]
 
 	// To
 	if  _, ok := StationMasterById[destStation]; !ok {
-		return 0, err
-	}
-	if err != nil {
-		return 0, err
+		return 0,errors.New("見つからなかった")
 	}
 	toStation := StationMasterById[destStation]
 
