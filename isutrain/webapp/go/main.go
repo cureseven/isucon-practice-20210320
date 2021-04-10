@@ -66,7 +66,6 @@ type Train struct {
 	LastStation  string    `json:"last_station" db:"last_station"`
 	IsNobori     bool      `json:"is_nobori" db:"is_nobori"`
 	departure    *string    `json:"departure" db:"departure"`
-	arrival      *string    `json:"arrival" db:"arrival"`
 }
 
 type Seat struct {
@@ -505,34 +504,35 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	if trainClass == "" {
 		query := `
 			SELECT
-				tm.*,ttm.departure, ttm.arrival
+				tm.*,
+				ttm.departure as departure,
 			FROM
 				train_master tm
 			left join
 				train_timetable_master ttm
 			on
-				tm.train_name = ttm.train_name
+				tm.train_name = ttm.train_name and ttm.station =?
 			WHERE
 				tm.date=? and tm.train_class IN(?) AND tm.is_nobori = ?
 			order by
 				departure_at asc
 			`
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
+		inQuery, inArgs, err = sqlx.In(query, fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
 		query := `
 			SELECT
-				tm.*,ttm.departure, ttm.arrival
+				tm.*,ttm.departure
 			FROM
 				train_master tm
 			left join
 				train_timetable_master ttm
 			on
-				tm.train_name = ttm.train_name
+				tm.train_name = ttm.train_name and ttm.station =?
 			WHERE
 				tm.date=? and tm.train_class IN(?) AND tm.is_nobori =? AND tm.train_class =?
 			order by
 				departure_at asc`
-		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
+		inQuery, inArgs, err = sqlx.In(query, fromStation.Name, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
 		errorResponse(w, http.StatusBadRequest, err.Error())
@@ -605,9 +605,14 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 			var departure, arrival string
 
 			departure = *train.departure
-			arrival = *train.arrival
 
 			departureDate, err := time.Parse("2006/01/02 15:04:05 -07:00 MST", fmt.Sprintf("%s %s +09:00 JST", date.Format("2006/01/02"), departure))
+			if err != nil {
+				errorResponse(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			err = dbx.Get(&arrival, "SELECT arrival FROM train_timetable_master WHERE date=? AND train_class=? AND train_name=? AND station=?", date.Format("2006/01/02"), train.TrainClass, train.TrainName, toStation.Name)
 			if err != nil {
 				errorResponse(w, http.StatusInternalServerError, err.Error())
 				return
