@@ -2038,14 +2038,11 @@ func dummyHandler(w http.ResponseWriter, r *http.Request) {
 
 func initStationMaster() {
 	var stationMaster []Station
-	q := "SELECT * FROM station_master"
-	q, params, err := sqlx.In(q)
-	if err != nil {
-		return
-	}
 
-	if err := sqlx.Select(dbx, &stationMaster, q, params...);
-	err != nil {
+	query := "SELECT * FROM station_master ORDER BY id"
+	err := dbx.Select(&stationMaster, query)
+	if err != nil {
+		fmt.Println("DB:取得できなかった")
 		return
 	}
 
