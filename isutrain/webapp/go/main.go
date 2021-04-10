@@ -505,23 +505,33 @@ func trainSearchHandler(w http.ResponseWriter, r *http.Request) {
 	if trainClass == "" {
 		query := `
 			SELECT
-			tm.*,ttm.departure, ttm.arrival
-			FROM train_master tm
-			left join train_timetable_master ttm
-			on tm.train_name = ttm.train_name
-			WHERE tm.date=? and tm.train_class IN(?) AND tm.is_nobori = ?
-			order by departure_at asc
+				tm.*,ttm.departure, ttm.arrival
+			FROM
+				train_master tm
+			left join
+				train_timetable_master ttm
+			on
+				tm.train_name = ttm.train_name
+			WHERE
+				tm.date=? and tm.train_class IN(?) AND tm.is_nobori = ?
+			order by
+				departure_at asc
 			`
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori)
 	} else {
 		query := `
 			SELECT
-			tm.*,ttm.departure, ttm.arrival
-			FROM train_master tm
-			left join train_timetable_master ttm
-			on tm.train_name = ttm.train_name
-			WHERE tm.date=? and tm.train_class IN(?) AND tm.is_nobori =? AND tm.train_class =?
-			order by departure_at asc`
+				tm.*,ttm.departure, ttm.arrival
+			FROM
+				train_master tm
+			left join
+				train_timetable_master ttm
+			on
+				tm.train_name = ttm.train_name
+			WHERE
+				tm.date=? and tm.train_class IN(?) AND tm.is_nobori =? AND tm.train_class =?
+			order by
+				departure_at asc`
 		inQuery, inArgs, err = sqlx.In(query, date.Format("2006/01/02"), usableTrainClassList, isNobori, trainClass)
 	}
 	if err != nil {
