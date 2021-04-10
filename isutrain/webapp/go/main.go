@@ -371,7 +371,7 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 
 	// 期間・車両・座席クラス倍率
 	fareList := []Fare{}
-	query = "SELECT * FROM fare_master WHERE train_class=? AND seat_class=? ORDER BY start_date"
+	query := "SELECT * FROM fare_master WHERE train_class=? AND seat_class=? ORDER BY start_date"
 	err = dbx.Select(&fareList, query, trainClass, seatClass)
 	if err != nil {
 		return 0, err
