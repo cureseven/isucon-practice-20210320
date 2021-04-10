@@ -30,6 +30,7 @@ var (
 	TrainClassMap                 = map[string]string{"express": "最速", "semi_express": "中間", "local": "遅いやつ"}
 	PaymentCancelQueuedPaymentIds []string
 	PaymentCancelQueueLock        sync.Mutex
+	StationMasterById = map[int]Station{}
 )
 
 var dbx *sqlx.DB
@@ -347,28 +348,25 @@ func fareCalc(date time.Time, depStation int, destStation int, trainClass, seatC
 	// 距離運賃(円) * 期間倍率(繁忙期なら2倍等) * 車両クラス倍率(急行・各停等) * 座席クラス倍率(プレミアム・指定席・自由席)
 	//
 	var err error
-	var fromStation, toStation Station
-
 	query := "SELECT * FROM station_master WHERE id=?"
 
 	// From
-	err = dbx.Get(&fromStation, query, depStation)
-	if err == sql.ErrNoRows {
+	if  _, ok := StationMasterById[depStation]; !ok {
 		return 0, err
 	}
 	if err != nil {
 		return 0, err
 	}
+	fromStation := StationMasterById[depStation]
 
 	// To
-	err = dbx.Get(&toStation, query, destStation)
-	if err == sql.ErrNoRows {
+	if  _, ok := StationMasterById[destStation]; !ok {
 		return 0, err
 	}
 	if err != nil {
-		log.Print(err)
 		return 0, err
 	}
+	toStation := StationMasterById[destStation]
 
 	fmt.Println("distance", math.Abs(toStation.Distance-fromStation.Distance))
 	distFare, err := getDistanceFare(math.Abs(toStation.Distance - fromStation.Distance))
@@ -2044,6 +2042,25 @@ func dummyHandler(w http.ResponseWriter, r *http.Request) {
 	messageResponse(w, "ok")
 }
 
+func initStationMaster() {
+	var stationMaster []Station
+	q := "SELECT * FROM station_master"
+	q, params, err := sqlx.In(q)
+	if err != nil {
+		return
+	}
+
+	if err := sqlx.Select(dbx, &stationMaster, q, params...);
+	err != nil {
+		return
+	}
+
+	for i := len(stationMaster) - 1; i >= 0; i-- {
+		StationMasterById[stationMaster[i].ID] = stationMaster[i]
+	}
+}
+
+
 func main() {
 	// MySQL関連のお膳立て
 	var err error
@@ -2113,7 +2130,7 @@ func main() {
 	mux.HandleFunc(pat.Get("/api/user/reservations"), userReservationsHandler)
 	mux.HandleFunc(pat.Get("/api/user/reservations/:item_id"), userReservationResponseHandler)
 	mux.HandleFunc(pat.Post("/api/user/reservations/:item_id/cancel"), userReservationCancelHandler)
-
+	initStationMaster()
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {
